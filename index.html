@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reality Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e0e10; color: #e8e8e4; font-family: 'Courier New', monospace; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 1rem; }
+  h1 { font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase; color: #888; margin-bottom: 0.5rem; padding-top: 0.5rem; }
+  canvas { display: block; cursor: crosshair; border: 0.5px solid #333; border-radius: 6px; width: 100%; max-width: 720px; }
+  #controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 0.6rem 0; max-width: 720px; width: 100%; }
+  label { font-size: 12px; color: #888; display: flex; align-items: center; gap: 6px; }
+  input[type=range] { width: 70px; accent-color: #7F77DD; }
+  select { background: #1a1a1e; color: #ccc; border: 0.5px solid #444; border-radius: 4px; padding: 3px 6px; font-size: 12px; font-family: inherit; }
+  button { background: transparent; color: #aaa; border: 0.5px solid #444; border-radius: 4px; padding: 4px 10px; font-size: 12px; font-family: inherit; cursor: pointer; }
+  button:hover { background: #1e1e22; color: #ddd; }
+  #stats { font-size: 11px; color: #555; padding: 2px 0 0.5rem; max-width: 720px; width: 100%; }
+</style>
+</head>
+<body>
+<h1>Reality Simulator</h1>
+<canvas id="c"></canvas>
+<div id="controls">
+  <label>Gravity <input type="range" id="grav" min="0" max="2" step="0.01" value="0.15"></label>
+  <label>Bounce <input type="range" id="bounce" min="0.3" max="1" step="0.01" value="0.75"></label>
+  <label>Friction <input type="range" id="friction" min="0.9" max="1" step="0.001" value="0.995"></label>
+  <label>Particles
+    <select id="count">
+      <option value="50">50</option>
+      <option value="150" selected>150</option>
+      <option value="300">300</option>
+      <option value="600">600</option>
+    </select>
+  </label>
+  <label>Physics
+    <select id="mode">
+      <option value="gravity">Gravity</option>
+      <option value="repel">Repulsion</option>
+      <option value="attract">Attraction</option>
+      <option value="chaos">Chaos</option>
+      <option value="orbit">Orbit</option>
+    </select>
+  </label>
+  <button onclick="reset()">Reset ↺</button>
+  <button onclick="bigBang()">Big Bang ↗</button>
+</div>
+<div id="stats"></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const w = Math.min(720, window.innerWidth - 32);
+  canvas.width = w;
+  canvas.height = Math.round(w * 0.58);
+}
+resize();
+window.addEventListener('resize', () => { resize(); reset(); });
+
+const COLORS = ['#7F77DD','#1D9E75','#D85A30','#378ADD','#BA7517','#D4537E','#639922','#E24B4A'];
+
+let particles = [];
+let mouse = { x: -999, y: -999 };
+let frame = 0;
+
+function getParams() {
+  return {
+    g: parseFloat(document.getElementById('grav').value),
+    b: parseFloat(document.getElementById('bounce').value),
+    f: parseFloat(document.getElementById('friction').value),
+    mode: document.getElementById('mode').value,
+    count: parseInt(document.getElementById('count').value)
+  };
+}
+
+function createParticle(x, y, vx, vy) {
+  const r = 2 + Math.random() * 4;
+  return {
+    x: x ?? Math.random() * canvas.width,
+    y: y ?? Math.random() * canvas.height * 0.5,
+    vx: vx ?? (Math.random() - 0.5) * 4,
+    vy: vy ?? (Math.random() - 0.5) * 4,
+    r, mass: r * r,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    trail: []
+  };
+}
+
+function reset() {
+  const p = getParams();
+  particles = Array.from({ length: p.count }, () => createParticle());
+}
+
+function bigBang() {
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const p = getParams();
+  particles = Array.from({ length: p.count }, (_, i) => {
+    const angle = (i / p.count) * Math.PI * 2 + Math.random() * 0.3;
+    const speed = 2 + Math.random() * 8;
+    return createParticle(cx + (Math.random()-0.5)*20, cy + (Math.random()-0.5)*20,
+      Math.cos(angle)*speed, Math.sin(angle)*speed);
+  });
+}
+
+reset();
+
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / r.width;
+  const scaleY = canvas.height / r.height;
+  mouse.x = (e.clientX - r.left) * scaleX;
+  mouse.y = (e.clientY - r.top) * scaleY;
+});
+canvas.addEventListener('click', e => {
+  const r = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / r.width;
+  const scaleY = canvas.height / r.height;
+  const x = (e.clientX - r.left) * scaleX;
+  const y = (e.clientY - r.top) * scaleY;
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + Math.random() * 5;
+    particles.push(createParticle(x, y, Math.cos(angle)*speed, Math.sin(angle)*speed));
+  }
+});
+
+document.getElementById('count').addEventListener('change', reset);
+document.getElementById('mode').addEventListener('change', reset);
+
+function tick() {
+  const { g, b, f, mode } = getParams();
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  for (const p of particles) {
+    const dx = mouse.x - p.x, dy = mouse.y - p.y;
+    const dist = Math.sqrt(dx*dx + dy*dy) + 1;
+    if (mode === 'gravity') {
+      p.vy += g;
+    } else if (mode === 'repel') {
+      if (dist < 150) { const force = 300 / (dist*dist); p.vx -= (dx/dist)*force; p.vy -= (dy/dist)*force; }
+      p.vy += g * 0.2;
+    } else if (mode === 'attract') {
+      if (dist < 250) { const force = 80 / (dist+10); p.vx += (dx/dist)*force*0.05; p.vy += (dy/dist)*force*0.05; }
+    } else if (mode === 'chaos') {
+      p.vx += (Math.random()-0.5)*0.5; p.vy += (Math.random()-0.5)*0.5; p.vy += g*0.1;
+    } else if (mode === 'orbit') {
+      const odx = cx-p.x, ody = cy-p.y, od = Math.sqrt(odx*odx+ody*ody)+1;
+      const force = 60/(od+5); p.vx += (odx/od)*force*0.02; p.vy += (ody/od)*force*0.02;
+    }
+    p.vx *= f; p.vy *= f;
+    const speed = Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+    if (speed > 18) { p.vx=(p.vx/speed)*18; p.vy=(p.vy/speed)*18; }
+    p.trail.push({ x: p.x, y: p.y });
+    if (p.trail.length > 10) p.trail.shift();
+    p.x += p.vx; p.y += p.vy;
+    if (p.x-p.r<0) { p.x=p.r; p.vx=Math.abs(p.vx)*b; }
+    if (p.x+p.r>W) { p.x=W-p.r; p.vx=-Math.abs(p.vx)*b; }
+    if (p.y-p.r<0) { p.y=p.r; p.vy=Math.abs(p.vy)*b; }
+    if (p.y+p.r>H) { p.y=H-p.r; p.vy=-Math.abs(p.vy)*b; }
+  }
+}
+
+function draw() {
+  ctx.fillStyle = 'rgba(14,14,16,0.28)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  for (const p of particles) {
+    if (p.trail.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(p.trail[0].x, p.trail[0].y);
+      for (let i = 1; i < p.trail.length; i++) ctx.lineTo(p.trail[i].x, p.trail[i].y);
+      ctx.strokeStyle = p.color + '44';
+      ctx.lineWidth = p.r * 0.6;
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fillStyle = p.color;
+    ctx.fill();
+  }
+}
+
+function updateStats() {
+  if (frame % 30 !== 0) return;
+  let ke = 0;
+  for (const p of particles) ke += 0.5*p.mass*(p.vx*p.vx+p.vy*p.vy);
+  document.getElementById('stats').textContent =
+    `${particles.length} particles · kinetic energy: ${Math.round(ke).toLocaleString()} · time: ${frame}`;
+}
+
+function loop() { tick(); draw(); updateStats(); frame++; requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
