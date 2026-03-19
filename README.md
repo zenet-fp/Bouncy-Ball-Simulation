@@ -90,5 +90,3 @@ Each particle has a position, velocity, mass (proportional to radius²), color, 
 MIT — do whatever you want with it.
 
 ---
-
-*Built with Claude.*
